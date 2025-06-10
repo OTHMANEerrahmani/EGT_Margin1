@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import io
 
 # --- Configuration ---
-FILE_PATH = 'data/moteur1.csv'
 TARGET_COLUMN = 'EGT Margin'
 DATE_COLUMN = 'Flight DateTime'
 CSN_COLUMN = 'CSN'
@@ -17,13 +16,20 @@ MAX_LOOKBACK = 10
 
 # --- 1. LOAD DATA ---
 def load_data(file_path):
+    """
+    Charge les données depuis un fichier CSV.
+    Args:
+        file_path: Chemin du fichier CSV ou objet de fichier uploadé
+    Returns:
+        DataFrame pandas ou None en cas d'erreur
+    """
     try:
-        df = pd.read_csv(file_path)
+        if isinstance(file_path, str):
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_csv(file_path)
         print(f"Data loaded successfully. Shape: {df.shape}")
         return df
-    except FileNotFoundError:
-        print(f"ERROR: File not found at '{file_path}'. Please check the path.")
-        return None
     except Exception as e:
         print(f"Error loading data: {e}")
         return None

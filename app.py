@@ -35,12 +35,18 @@ else:
 
 # Fonction pour charger et traiter les données
 @st.cache_data
-def load_and_process_data():
-    df_raw = load_data('data/moteur1.csv')
-    if df_raw is not None:
-        processed_output = process_data(df_raw.copy())
-        if processed_output is not None:
-            return processed_output
+def load_and_process_data(uploaded_file=None):
+    if uploaded_file is None:
+        return None, None
+    
+    try:
+        df_raw = pd.read_csv(uploaded_file)
+        if df_raw is not None:
+            processed_output = process_data(df_raw.copy())
+            if processed_output is not None:
+                return processed_output
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du fichier : {str(e)}")
     return None, None
 
 # Page de prédiction
@@ -48,7 +54,7 @@ if page == "Prédiction":
     st.header("Prédiction des Marges EGT")
     
     # Charger les données
-    df_processed, all_feature_names = load_and_process_data()
+    df_processed, all_feature_names = load_and_process_data(uploaded_file)
     
     if df_processed is not None and all_feature_names is not None:
         # Paramètres de prédiction
@@ -56,7 +62,7 @@ if page == "Prédiction":
         num_future_steps = st.slider("Nombre de cycles à prédire", 5, 50, 25)
         
         # Bouton de prédiction
-        predict_btn = st.button("🚀 Lancer la prédiction", type="primary")
+        predict_btn = st.button("🚀 Lancer la prédiction", type="primary", disabled=uploaded_file is None)
         
         if predict_btn:
             # Entraîner le modèle
@@ -133,6 +139,15 @@ if page == "Prédiction":
             
             st.plotly_chart(fig, use_container_width=True)
             
+            # Bouton de téléchargement des prédictions
+            csv = future_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Télécharger les prédictions (CSV)",
+                data=csv,
+                file_name="predictions_egt_margin.csv",
+                mime="text/csv"
+            )
+            
             # Tableau des prédictions
             st.dataframe(future_df)
             
@@ -152,103 +167,81 @@ if page == "Prédiction":
                 st.metric("R²", f"{r2:.4f}")
 
 # Page d'évaluation
-else:
+elif page == "Évaluation":
     st.header("Évaluation du Modèle")
     
     # Charger les données
-    df_raw = load_data_eval('data/moteur1.csv')
+    df_processed, all_feature_names = load_and_process_data(uploaded_file)
     
-    if df_raw is not None:
-        processed_output = process_data_eval(df_raw.copy())
+    if df_processed is not None and all_feature_names is not None:
+        # Paramètres d'évaluation
+        # st.subheader("Paramètres d'évaluation")
+        test_size = 40
         
-        if processed_output is not None:
-            df_processed, all_feature_names = processed_output
+        # Bouton d'évaluation
+        eval_btn = st.button("📊 Lancer l'évaluation", type="primary", disabled=uploaded_file is None)
+        
+        if eval_btn:
+            # Entraîner le modèle
+            X = df_processed[all_feature_names]
+            y = df_processed['EGT Margin']
             
-            if not df_processed.empty:
-                # Bouton d'évaluation
-                eval_btn = st.button("📊 Lancer l'évaluation", type="primary")
-                
-                if eval_btn:
-                    # Préparation des données
-                    X = df_processed[all_feature_names]
-                    y = df_processed['EGT Margin']
-                    
-                    test_size_ratio = 0.2
-                    split_index = int(len(df_processed) * (1 - test_size_ratio))
-                    X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-                    y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
-                    
-                    # Entraînement du modèle
-                    model = xgb.XGBRegressor(
-                        objective='reg:squarederror',
-                        n_estimators=100,
-                        learning_rate=0.1,
-                        max_depth=5,
-                        subsample=0.8,
-                        colsample_bytree=0.8,
-                        random_state=42
-                    )
-                    model.fit(X_train, y_train)
-                    
-                    # Prédictions et évaluation
-                    y_pred = model.predict(X_test)
-                    
-                    # Métriques
-                    mae = mean_absolute_error(y_test, y_pred)
-                    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-                    r2 = r2_score(y_test, y_pred)
-                    
-                    # Affichage des métriques
-                    st.subheader("Métriques de performance")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("MAE", f"{mae:.4f}")
-                    with col2:
-                        st.metric("RMSE", f"{rmse:.4f}")
-                    with col3:
-                        st.metric("R²", f"{r2:.4f}")
-                    
-                    # Graphique de comparaison
-                    st.subheader("Comparaison des valeurs réelles et prédites")
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=y_test.index,
-                        y=y_test,
-                        mode='lines',
-                        name='Valeurs réelles',
-                        line=dict(color='blue')
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=y_test.index,
-                        y=y_pred,
-                        mode='lines',
-                        name='Prédictions',
-                        line=dict(color='red')
-                    ))
-                    
-                    fig.update_layout(
-                        title='EGT Margin - Valeurs réelles vs Prédictions',
-                        xaxis_title='Index',
-                        yaxis_title='EGT Margin',
-                        hovermode='x'
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Graphique de dispersion
-                    st.subheader("Graphique de dispersion")
-                    fig_scatter = px.scatter(
-                        x=y_test,
-                        y=y_pred,
-                        labels={'x': 'Valeurs réelles', 'y': 'Prédictions'},
-                        title='Valeurs réelles vs Prédictions'
-                    )
-                    fig_scatter.add_trace(go.Scatter(
-                        x=[y_test.min(), y_test.max()],
-                        y=[y_test.min(), y_test.max()],
-                        mode='lines',
-                        name='Ligne idéale',
-                        line=dict(color='red', dash='dash')
-                    ))
-                    
-                    st.plotly_chart(fig_scatter, use_container_width=True) 
+            test_size_ratio = test_size / 100
+            split_index = int(len(df_processed) * (1 - test_size_ratio))
+            X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+            y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
+            
+            model = xgb.XGBRegressor(
+                objective='reg:squarederror',
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=5,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=42
+            )
+            model.fit(X_train, y_train)
+            
+            # Faire les prédictions
+            y_pred = model.predict(X_test)
+            
+            # Calculer les métriques
+            mae = mean_absolute_error(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            r2 = r2_score(y_test, y_pred)
+            
+            # Afficher les métriques
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("MAE", f"{mae:.2f}")
+            with col2:
+                st.metric("MSE", f"{mse:.2f}")
+            with col3:
+                st.metric("RMSE", f"{rmse:.2f}")
+            with col4:
+                st.metric("R²", f"{r2:.2f}")
+            
+            # Afficher le graphique de comparaison
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=y_test.index,
+                y=y_test,
+                name='Valeurs réelles',
+                line=dict(color='blue')
+            ))
+            fig.add_trace(go.Scatter(
+                x=y_test.index,
+                y=y_pred,
+                name='Prédictions',
+                line=dict(color='red')
+            ))
+            fig.update_layout(
+                title='Comparaison des valeurs réelles et prédites',
+                xaxis_title='CSN',
+                yaxis_title='EGT Margin',
+                showlegend=True
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Veuillez charger un fichier CSV pour commencer l'évaluation.") 
